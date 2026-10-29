@@ -1,5 +1,7 @@
 # ferrous-frontend
 
+[← Back to FerrousCX Root Architecture](https://github.com/reidlai/ferrous-cx)
+
 > **Svelte 5 Reactive Resolution Studio & Multi-Screen Workbench for FerrousCX**  
 > Modern enterprise web frontend powered by [Svelte 5 Runes](https://svelte.dev/), [shadcn-svelte](https://shadcn-svelte.com/), Tailwind CSS v4, and an RxJS unidirectional reactive streaming bridge.
 
