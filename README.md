@@ -20,7 +20,7 @@
 2. **Top Application Menu Bar (`Menubar`):** Global navigation housing operational controls, active agent status, and direct shortcuts to Screen 5 (`/benchmarks`) and Screen 6 (`/pipeline-performance`).
 3. **3-Column Resolution Studio:**
    - **Left Sidebar:** Active order queue, SLA risk badges, carrier delay alerts, and navigation links.
-   - **Middle Operational Canvas (Screens 1–4):** Active order timeline, carrier SLA radar, customer sentiment badges, and interactive traffic simulator dock.
+   - **Middle Operational Canvas (Screens 1–4):** Active order timeline, carrier SLA radar, customer sentiment badges, and the read-only Replay Monitor (replay rate, high watermark, consumer lag). The replayer is never controlled from the UI.
    - **Right AI Sidecar (Screen 1):** Transparent agent thought stream, tool invocation telemetry pills (<3ms), and sandboxed `HitlProposalCard` for operator approval of courtesy credits (capped at $20).
 4. **Screen 5 Copilot (Agent) Benchmarking Studio (`/benchmarks`):** Real-time leaderboard evaluating LLM providers (TTFT, token/s, cost, pass-rate) reading from Delta Lake.
 5. **Screen 6 Historical Pipeline Performance Studio (`/pipeline-performance`):** Real-time monitoring of Iggy broker ingestion and Arroyo Delta Lake commit throughput.
