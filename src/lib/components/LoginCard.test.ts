@@ -323,9 +323,9 @@ describe('LoginCard', () => {
 
 		const shell = await screen.findByTestId('resolution-studio-shell');
 		expect(shell).toBeInTheDocument();
-		expect(screen.getByText('Order Queue')).toBeInTheDocument();
-		expect(screen.getByText('Operational Canvas')).toBeInTheDocument();
-		expect(screen.getByText('AI Sidecar')).toBeInTheDocument();
+		expect(screen.getByTestId('investigation-left-queue')).toBeInTheDocument();
+		expect(screen.getByTestId('investigation-middle-canvas')).toBeInTheDocument();
+		expect(screen.getByTestId('investigation-right-copilot')).toBeInTheDocument();
 
 		await fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
 

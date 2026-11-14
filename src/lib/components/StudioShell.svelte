@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import InvestigationScreen from '$lib/components/InvestigationScreen.svelte';
 	import Menubar from '$lib/components/Menubar.svelte';
+	import { investigationStore } from '$lib/stores/investigation.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { normalizePath, workspace } from '$lib/stores/workspace.svelte';
 
@@ -16,6 +19,18 @@
 	}: StudioShellProps = $props();
 
 	let lastSyncedInitialPath = $state<string | undefined>(undefined);
+	let lastAuthenticated = untrack(() => sessionStore.authenticated);
+	let lastTenant = untrack(() => sessionStore.tenant);
+
+	$effect(() => {
+		const auth = sessionStore.authenticated;
+		const tenant = sessionStore.tenant;
+		if (auth !== lastAuthenticated || tenant !== lastTenant) {
+			lastAuthenticated = auth;
+			lastTenant = tenant;
+			investigationStore.reset();
+		}
+	});
 
 	$effect(() => {
 		if (initialPath && initialPath !== lastSyncedInitialPath) {
@@ -100,31 +115,7 @@
 				</p>
 			</section>
 		{:else}
-			<div
-				data-testid="screen-investigation"
-				class="grid flex-1 grid-cols-1 divide-y divide-zinc-800 lg:grid-cols-12 lg:divide-x lg:divide-y-0"
-			>
-				<aside class="bg-zinc-950/60 p-4 lg:col-span-3">
-					<h2 class="text-xs font-semibold tracking-wider text-zinc-400 uppercase">Order Queue</h2>
-					<p class="mt-2 text-xs text-zinc-500">Active order queue ready for stream binding.</p>
-				</aside>
-
-				<section class="p-6 lg:col-span-5">
-					<h2 class="text-xs font-semibold tracking-wider text-zinc-400 uppercase">
-						Operational Canvas
-					</h2>
-					<p class="mt-2 text-sm text-zinc-400">
-						Select an order from the queue to inspect live SLA telemetry and customer timeline.
-					</p>
-				</section>
-
-				<aside class="bg-zinc-950/60 p-4 lg:col-span-4">
-					<h2 class="text-xs font-semibold tracking-wider text-zinc-400 uppercase">AI Sidecar</h2>
-					<p class="mt-2 text-xs text-zinc-500">
-						Transparent agent thought stream and HITL credit approvals appear here.
-					</p>
-				</aside>
-			</div>
+			<InvestigationScreen {sessionStore} />
 		{/if}
 	</main>
 </div>
