@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import AnalyticsScreen from '$lib/components/AnalyticsScreen.svelte';
+	import BenchmarksScreen from '$lib/components/BenchmarksScreen.svelte';
 	import InvestigationScreen from '$lib/components/InvestigationScreen.svelte';
 	import Menubar from '$lib/components/Menubar.svelte';
 	import RadarScreen from '$lib/components/RadarScreen.svelte';
 	import SimulatorScreen from '$lib/components/SimulatorScreen.svelte';
+	import { benchmarksStore } from '$lib/stores/benchmarks.svelte';
 	import { investigationStore } from '$lib/stores/investigation.svelte';
 	import { radarStore } from '$lib/stores/radar.svelte';
 	import { session } from '$lib/stores/session.svelte';
@@ -34,6 +36,7 @@
 			lastTenant = tenant;
 			investigationStore.reset();
 			radarStore.reset();
+			benchmarksStore.reset();
 		}
 	});
 
@@ -59,25 +62,7 @@
 
 	<main class="flex flex-1 flex-col">
 		{#if activePath === '/benchmarks'}
-			<section
-				data-testid="screen-benchmarks"
-				aria-label="LLM Benchmarks"
-				class="flex-1 p-6"
-			>
-				<div class="flex items-center justify-between border-b border-zinc-800 pb-4">
-					<div>
-						<h1 class="text-lg font-semibold text-zinc-50">LLM Benchmarks</h1>
-						<p class="mt-1 text-xs text-zinc-400">
-							Model latency, TTFT ({workspaceStore.ttftMs}ms), and token throughput telemetry.
-						</p>
-					</div>
-					<span
-						class="rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 font-mono text-xs text-purple-300"
-					>
-						⚡ {workspaceStore.ttftMs}ms TTFT
-					</span>
-				</div>
-			</section>
+			<BenchmarksScreen {sessionStore} />
 		{:else if activePath === '/pipeline-performance'}
 			<section
 				data-testid="screen-pipeline-performance"
