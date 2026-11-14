@@ -127,7 +127,7 @@ describe('Story 10.4: RadarScreen, AnalyticsScreen, SimulatorScreen', () => {
 			expect(directLogCard).toHaveTextContent('DirectLog');
 			expect(directLogCard).toHaveTextContent('91.8%');
 
-			const clustersSection = screen.getByTestId('regional-delay-clusters');
+			expect(screen.getByTestId('regional-delay-clusters')).toBeInTheDocument();
 			for (const uf of ['SP', 'RJ', 'MG', 'BA', 'RS']) {
 				expect(screen.getByTestId(`cluster-row-${uf}`)).toBeInTheDocument();
 			}

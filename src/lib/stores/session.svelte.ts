@@ -59,7 +59,7 @@ function writeRememberedUsername(username: string | null): void {
 export function createSessionStore() {
 	const initialRemembered = readRememberedUsername();
 
-	let state = $state<SessionState>({
+	const state = $state<SessionState>({
 		authenticated: false,
 		token: null,
 		username: initialRemembered,

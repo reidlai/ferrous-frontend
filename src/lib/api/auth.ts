@@ -94,13 +94,13 @@ export async function authenticateBasic(
 	}
 
 	if (!response.ok) {
-		let errorData: RawAuthResponse | null = null;
+		let rawMessage: unknown = undefined;
 		try {
-			errorData = (await response.json()) as RawAuthResponse;
+			const errorData = (await response.json()) as RawAuthResponse;
+			rawMessage = errorData?.message ?? errorData?.detail ?? errorData?.error;
 		} catch {
-			errorData = null;
+			// fallback below
 		}
-		const rawMessage = errorData?.message ?? errorData?.detail ?? errorData?.error;
 		const serverMessage =
 			typeof rawMessage === 'string' && rawMessage.trim().length > 0
 				? rawMessage.trim()

@@ -359,7 +359,7 @@ export function createBenchmarksStore() {
 	let sqlResult = $state<DataFusionQueryResult>(runDataFusionQuery(DEFAULT_BENCHMARK_SQL));
 
 	let activeController: AbortController | null = null;
-	let activeTimers = new Set<ReturnType<typeof setTimeout>>();
+	const activeTimers = new Set<ReturnType<typeof setTimeout>>();
 	let streamSubscription: Subscription | null = null;
 	let chunkSubject: Subject<void> | null = null;
 	let pendingChunks: BenchmarkStreamChunk[] = [];

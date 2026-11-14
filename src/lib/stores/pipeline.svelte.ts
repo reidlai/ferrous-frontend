@@ -200,7 +200,7 @@ export function createPipelineStore() {
 	let terminalLines = $state<PipelineTerminalLine[]>([]);
 
 	let activeController: AbortController | null = null;
-	let activeTimers = new Set<ReturnType<typeof setTimeout>>();
+	const activeTimers = new Set<ReturnType<typeof setTimeout>>();
 	let streamSubscription: Subscription | null = null;
 	let chunkSubject: Subject<void> | null = null;
 	let pendingSamples: PipelineTelemetrySample[] = [];

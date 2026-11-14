@@ -48,7 +48,7 @@ export function normalizePath(path: string): WorkspacePath {
 }
 
 export function createWorkspaceStore(initialPath: string = '/investigation') {
-	let state = $state<WorkspaceState>({
+	const state = $state<WorkspaceState>({
 		currentPath: normalizePath(initialPath),
 		ttftMs: 182,
 		walLatencyMs: 0.4,

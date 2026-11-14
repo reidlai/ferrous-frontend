@@ -4,6 +4,7 @@ import {
 	type OrderCase,
 	type ToastMessage
 } from '$lib/api/orders';
+import { PreemptAbortManager } from '$lib/streams/sseBridge';
 
 export type ProposalStatus = 'pending' | 'submitting' | 'approved' | 'dismissed';
 
@@ -188,6 +189,7 @@ export function formatBrl(value: number): string {
 }
 
 export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OLIST_ORDERS) {
+	const abortManager = new PreemptAbortManager();
 	let orders = $state<OrderCase[]>(initialOrders);
 	let activeOrderId = $state<string>(initialOrders[0]?.orderId ?? '');
 	let showTranslation = $state<boolean>(false);
@@ -210,6 +212,9 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 	);
 
 	return {
+		get abortManager() {
+			return abortManager;
+		},
 		get orders() {
 			return orders;
 		},
@@ -233,6 +238,7 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 		},
 
 		selectOrder(orderId: string) {
+			abortManager.abort('Order switch');
 			if (orders.some((o) => o.orderId === orderId)) {
 				activeOrderId = orderId;
 				showTranslation = false;
@@ -251,6 +257,7 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 			token: string | null,
 			fetcher?: typeof fetch
 		): Promise<boolean> {
+			abortManager.abort('Manual intervention');
 			const order = activeOrder;
 			if (!order) {
 				return false;
@@ -309,6 +316,7 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 		},
 
 		dismissProposal() {
+			abortManager.abort('Manual intervention');
 			const order = activeOrder;
 			if (!order) {
 				return;
@@ -326,6 +334,7 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 		},
 
 		reset() {
+			abortManager.abort('Reset');
 			epoch += 1;
 			orders = initialOrders;
 			activeOrderId = initialOrders[0]?.orderId ?? '';
