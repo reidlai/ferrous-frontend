@@ -1,8 +1,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import AnalyticsScreen from '$lib/components/AnalyticsScreen.svelte';
 	import InvestigationScreen from '$lib/components/InvestigationScreen.svelte';
 	import Menubar from '$lib/components/Menubar.svelte';
+	import RadarScreen from '$lib/components/RadarScreen.svelte';
+	import SimulatorScreen from '$lib/components/SimulatorScreen.svelte';
 	import { investigationStore } from '$lib/stores/investigation.svelte';
+	import { radarStore } from '$lib/stores/radar.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { normalizePath, workspace } from '$lib/stores/workspace.svelte';
 
@@ -29,6 +33,7 @@
 			lastAuthenticated = auth;
 			lastTenant = tenant;
 			investigationStore.reset();
+			radarStore.reset();
 		}
 	});
 
@@ -94,26 +99,11 @@
 				</div>
 			</section>
 		{:else if activePath === '/radar'}
-			<section data-testid="screen-radar" aria-label="Live Ops Radar" class="flex-1 p-6">
-				<h1 class="text-lg font-semibold text-zinc-50">Live Ops Radar</h1>
-				<p class="mt-1 text-xs text-zinc-400">
-					Real-time regional SLA breach monitor for tenant {sessionStore.tenant ?? 'SP-01'}.
-				</p>
-			</section>
+			<RadarScreen {workspaceStore} />
 		{:else if activePath === '/analytics'}
-			<section data-testid="screen-analytics" aria-label="SLA & Analytics" class="flex-1 p-6">
-				<h1 class="text-lg font-semibold text-zinc-50">SLA &amp; Analytics</h1>
-				<p class="mt-1 text-xs text-zinc-400">
-					Historical SLA compliance and carrier performance metrics.
-				</p>
-			</section>
+			<AnalyticsScreen />
 		{:else if activePath === '/simulator'}
-			<section data-testid="screen-simulator" aria-label="Simulator" class="flex-1 p-6">
-				<h1 class="text-lg font-semibold text-zinc-50">Simulator</h1>
-				<p class="mt-1 text-xs text-zinc-400">
-					What-if disruption scenarios and agent policy evaluation.
-				</p>
-			</section>
+			<SimulatorScreen />
 		{:else}
 			<InvestigationScreen {sessionStore} />
 		{/if}
