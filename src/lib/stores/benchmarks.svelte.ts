@@ -245,6 +245,7 @@ const DELTA_BENCHMARK_DATASET: DataFusionBenchmarkRow[] = [
 ];
 
 const DEFAULT_SELECTED_MODELS: BenchmarkModelId[] = ['qwen-2.5-72b', 'llama-3.3-70b'];
+const MAX_TERMINAL_LINES = 2000;
 
 export function classifyTtft(ttftMs: number): TtftClassification {
 	if (!Number.isFinite(ttftMs) || ttftMs < 0 || ttftMs > 500) {
@@ -422,7 +423,7 @@ export function createBenchmarksStore() {
 			}
 		}
 
-		terminalLines = [...terminalLines, ...newLines];
+		terminalLines = [...terminalLines, ...newLines].slice(-MAX_TERMINAL_LINES);
 	}
 
 	function initStreamPipeline() {
@@ -465,6 +466,63 @@ export function createBenchmarksStore() {
 		};
 		signal.addEventListener('abort', onAbort, { once: true });
 
+		const normalizeSsePayload = (
+			parsed: Record<string, unknown>,
+			rawText: string
+		): BenchmarkStreamChunk => {
+			const modelId = (
+				typeof parsed.modelId === 'string'
+					? parsed.modelId
+					: typeof parsed.model_id === 'string'
+						? parsed.model_id
+						: 'system'
+			) as BenchmarkModelId | 'system';
+
+			const ttftMs =
+				typeof parsed.ttftMs === 'number'
+					? parsed.ttftMs
+					: typeof parsed.ttft_micros === 'number'
+						? parsed.ttft_micros / 1000
+						: undefined;
+
+			const toolValidation = (parsed.toolValidation ??
+				parsed.tool_validation) as ToolValidationResult | undefined;
+
+			const validLevels = new Set(['info', 'ttft', 'tool', 'error', 'done']);
+			const level = (
+				typeof parsed.level === 'string' && validLevels.has(parsed.level)
+					? parsed.level
+					: typeof ttftMs === 'number'
+						? 'ttft'
+						: toolValidation
+							? 'tool'
+							: 'info'
+			) as BenchmarkStreamChunk['level'];
+
+			let text: string;
+			if (typeof parsed.text === 'string') {
+				text = parsed.text;
+			} else if (typeof parsed.token_delta === 'string') {
+				text = parsed.token_delta;
+			} else if (typeof parsed.message === 'string') {
+				text = parsed.message;
+			} else if (typeof parsed.model_id === 'string') {
+				const ttftPart = typeof ttftMs === 'number' ? ` -> ${formatTtftMicros(ttftMs)}` : '';
+				const tpsPart = typeof parsed.tps === 'number' ? ` · ${parsed.tps.toFixed(1)} tok/s` : '';
+				text = `[TTFT] ${parsed.model_id}${ttftPart}${tpsPart}`;
+			} else {
+				text = rawText;
+			}
+
+			return {
+				modelId,
+				level,
+				text,
+				ttftMs,
+				toolValidation
+			};
+		};
+
 		const processSseEvent = (rawEvent: string) => {
 			const dataLines = rawEvent
 				.split(/\r?\n/)
@@ -475,21 +533,20 @@ export function createBenchmarksStore() {
 			if (!payloadText || payloadText === '[DONE]') return;
 
 			try {
-				const parsed = JSON.parse(payloadText) as Partial<BenchmarkStreamChunk>;
-				pushChunk({
-					modelId: parsed.modelId ?? 'system',
-					level: parsed.level ?? 'info',
-					text: parsed.text ?? payloadText,
-					ttftMs: parsed.ttftMs,
-					toolValidation: parsed.toolValidation
-				});
+				const parsed: unknown = JSON.parse(payloadText);
+				if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+					pushChunk(normalizeSsePayload(parsed as Record<string, unknown>, payloadText));
+					return;
+				}
 			} catch {
-				pushChunk({
-					modelId: 'system',
-					level: 'info',
-					text: payloadText
-				});
+				// Fall back to plain-text SSE event payload.
 			}
+
+			pushChunk({
+				modelId: 'system',
+				level: 'info',
+				text: payloadText
+			});
 		};
 
 		try {
@@ -516,7 +573,9 @@ export function createBenchmarksStore() {
 				}
 			}
 
-			flushPendingChunks();
+			if (!signal.aborted) {
+				flushPendingChunks();
+			}
 			return !signal.aborted;
 		} finally {
 			signal.removeEventListener('abort', onAbort);
@@ -753,22 +812,49 @@ export function createBenchmarksStore() {
 						signal: controller.signal
 					});
 
-					if (controller.signal.aborted) {
+					if (controller.signal.aborted || activeController !== controller) {
+						return;
+					}
+
+					if (runRes.status === 401 || runRes.status === 403 || runRes.status >= 500) {
+						teardownStreamPipeline();
+						status = 'error';
+						errorMessage = `Benchmark API error (${runRes.status})`;
+						activeController = null;
 						return;
 					}
 
 					if (runRes.ok) {
-						const payload = (await runRes.json()) as { run_id?: string };
-						const runId = payload.run_id ?? activeRunId;
+						const payload = (await runRes.json()) as { run_id?: unknown };
+						if (controller.signal.aborted || activeController !== controller) {
+							return;
+						}
+						const rawRunId = typeof payload?.run_id === 'string' ? payload.run_id.trim() : '';
+						const runId = rawRunId || activeRunId || `run-${Date.now()}`;
 						activeRunId = runId;
 
-						const streamRes = await fetcher(`/api/v1/benchmarks/${runId}/stream`, {
-							method: 'GET',
-							headers: options.token ? { Authorization: `Bearer ${options.token}` } : {},
-							signal: controller.signal
-						});
+						const streamRes = await fetcher(
+							`/api/v1/benchmarks/${encodeURIComponent(runId)}/stream`,
+							{
+								method: 'GET',
+								headers: options.token ? { Authorization: `Bearer ${options.token}` } : {},
+								signal: controller.signal
+							}
+						);
 
-						if (controller.signal.aborted) {
+						if (controller.signal.aborted || activeController !== controller) {
+							return;
+						}
+
+						if (
+							streamRes.status === 401 ||
+							streamRes.status === 403 ||
+							streamRes.status >= 500
+						) {
+							teardownStreamPipeline();
+							status = 'error';
+							errorMessage = `Benchmark stream error (${streamRes.status})`;
+							activeController = null;
 							return;
 						}
 

@@ -30,6 +30,7 @@
 
 	const MAX_WINDOWED_LINES = 40;
 	let windowStartOffset = $state<number | null>(null);
+	let terminalEl = $state<HTMLDivElement | null>(null);
 
 	const totalLines = $derived(store.terminalLines.length);
 	const effectiveStart = $derived(
@@ -40,6 +41,12 @@
 	const visibleLines = $derived(
 		store.terminalLines.slice(effectiveStart, effectiveStart + MAX_WINDOWED_LINES)
 	);
+
+	$effect(() => {
+		if (terminalEl && windowStartOffset === null && totalLines >= 0) {
+			terminalEl.scrollTop = terminalEl.scrollHeight;
+		}
+	});
 
 	function handleTerminalScroll(event: Event) {
 		const el = event.currentTarget as HTMLDivElement;
@@ -281,7 +288,9 @@
 			</span>
 		</div>
 
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<div
+			bind:this={terminalEl}
 			data-testid="benchmark-terminal"
 			role="log"
 			aria-live="polite"

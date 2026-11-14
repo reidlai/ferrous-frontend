@@ -7,18 +7,20 @@ import {
 } from './benchmarks.svelte';
 
 describe('benchmarks.svelte.ts', () => {
-	it('classifies TTFT thresholds accurately (emerald, amber, rose, NaN)', () => {
+	it('classifies TTFT thresholds accurately (emerald, amber, rose, NaN, negative)', () => {
 		expect(classifyTtft(182)).toEqual({ label: 'FAST', tier: 'emerald' });
 		expect(classifyTtft(200)).toEqual({ label: 'NOMINAL', tier: 'amber' });
 		expect(classifyTtft(350)).toEqual({ label: 'NOMINAL', tier: 'amber' });
 		expect(classifyTtft(500)).toEqual({ label: 'NOMINAL', tier: 'amber' });
 		expect(classifyTtft(501)).toEqual({ label: 'SLOW', tier: 'rose' });
 		expect(classifyTtft(Number.NaN)).toEqual({ label: 'SLOW', tier: 'rose' });
+		expect(classifyTtft(-10)).toEqual({ label: 'SLOW', tier: 'rose' });
 	});
 
 	it('formats microsecond TTFT precision cleanly', () => {
 		expect(formatTtftMicros(182.4)).toBe('182.4ms (182,400 μs)');
 		expect(formatTtftMicros(Number.NaN)).toBe('0.0ms (0 μs)');
+		expect(formatTtftMicros(-10)).toBe('0.0ms (0 μs)');
 	});
 
 	it('toggles model pills while preventing deselection of the last active model', () => {
@@ -121,5 +123,115 @@ describe('benchmarks.svelte.ts', () => {
 
 		const invalid = store.executeSqlQuery('SELECT * FROM unknown_table');
 		expect(invalid.error).toContain('delta.llm_benchmarks');
+
+		const nonSelect = store.executeSqlQuery('DROP TABLE delta.llm_benchmarks');
+		expect(nonSelect.error).toContain('SELECT');
+
+		const emptyResult = store.executeSqlQuery(
+			"SELECT model_id FROM delta.llm_benchmarks WHERE model_id = 'unknown';"
+		);
+		expect(emptyResult.error).toBeNull();
+		expect(emptyResult.rows).toEqual([]);
+	});
+
+	it('streams live fetch SSE with CRLF framing, multi-line data:, telemetry normalization, and EOF flush', async () => {
+		const store = createBenchmarksStore();
+		const encoder = new TextEncoder();
+
+		const sseBody = new ReadableStream<Uint8Array>({
+			start(controller) {
+				// Event 1: CRLF framing + multi-line data:
+				controller.enqueue(
+					encoder.encode(
+						'data: {"modelId":"qwen-2.5-72b",\r\n' +
+							'data: "level":"ttft","ttftMs":145.5,"text":"[TTFT] qwen-2.5-72b 145.5ms"}\r\n\r\n'
+					)
+				);
+				// Event 2: BenchmarkTelemetryItem shape + negative ttftMs ignored
+				controller.enqueue(
+					encoder.encode(
+						'data: {"model_id":"llama-3.3-70b","ttft_micros":190000,"tps":135.2}\r\n\r\n' +
+							'data: {"modelId":"system","level":"info","ttftMs":-10,"text":"ignored negative"}\r\n\r\n'
+					)
+				);
+				// Event 3: EOF without trailing delimiter
+				controller.enqueue(
+					encoder.encode('data: {"modelId":"system","level":"done","text":"[DONE] live stream"}')
+				);
+				controller.close();
+			}
+		});
+
+		const liveFetcher: typeof fetch = vi.fn(async (input) => {
+			const url = String(input);
+			if (url === '/api/v1/benchmarks/run') {
+				return new Response(JSON.stringify({ run_id: 'run/live 1' }), { status: 200 });
+			}
+			if (url === '/api/v1/benchmarks/run%2Flive%201/stream') {
+				return new Response(sseBody, {
+					status: 200,
+					headers: { 'Content-Type': 'text/event-stream' }
+				});
+			}
+			return new Response(null, { status: 404 });
+		});
+
+		await store.runBenchmarkSuite({ token: 'jwt-live', fetcher: liveFetcher });
+
+		expect(store.status).toBe('completed');
+		expect(store.activeRunId).toBe('run/live 1');
+		expect(store.latestTtftMs).toBe(190);
+		expect(store.terminalLines.map((l) => l.text)).toEqual([
+			'[TTFT] qwen-2.5-72b 145.5ms',
+			'[TTFT] llama-3.3-70b -> 190.0ms (190,000 μs) · 135.2 tok/s',
+			'ignored negative',
+			'[DONE] live stream'
+		]);
+	});
+
+	it('abortRun() cancels a live SSE stream cleanly', async () => {
+		const store = createBenchmarksStore();
+		const encoder = new TextEncoder();
+		let cancelCalled = false;
+
+		const sseBody = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(
+					encoder.encode('data: {"modelId":"system","level":"info","text":"started"}\n\n')
+				);
+			},
+			cancel() {
+				cancelCalled = true;
+			}
+		});
+
+		const liveFetcher: typeof fetch = vi.fn(async (input) => {
+			const url = String(input);
+			if (url === '/api/v1/benchmarks/run') {
+				return new Response(JSON.stringify({ run_id: 'run-abort-1' }), { status: 200 });
+			}
+			return new Response(sseBody, { status: 200 });
+		});
+
+		const runPromise = store.runBenchmarkSuite({ token: 'jwt-live', fetcher: liveFetcher });
+		await vi.waitFor(() => {
+			expect(store.terminalLines.some((l) => l.text === 'started')).toBe(true);
+		});
+
+		store.abortRun();
+		await runPromise;
+
+		expect(cancelCalled).toBe(true);
+		expect(store.status).toBe('aborted');
+		expect(store.terminalLines.at(-1)?.text).toBe('[ABORT] Benchmark run cancelled by operator.');
+	});
+
+	it('sets error status on 401/403/500 responses instead of falling back to simulation', async () => {
+		const store = createBenchmarksStore();
+		const unauthorizedFetcher: typeof fetch = vi.fn(async () => new Response(null, { status: 401 }));
+
+		await store.runBenchmarkSuite({ token: 'bad-jwt', fetcher: unauthorizedFetcher });
+		expect(store.status).toBe('error');
+		expect(store.errorMessage).toContain('401');
 	});
 });

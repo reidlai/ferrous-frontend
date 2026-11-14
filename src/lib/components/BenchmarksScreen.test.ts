@@ -42,7 +42,7 @@ describe('Story 10.5: BenchmarksScreen & StudioShell /benchmarks wiring', () => 
 
 		await fireEvent.click(screen.getByTestId('category-tab-hitl-guardrails'));
 		expect(screen.getByTestId('category-tab-hitl-guardrails')).toHaveAttribute(
-			'aria-selected',
+			'aria-pressed',
 			'true'
 		);
 
@@ -118,5 +118,57 @@ describe('Story 10.5: BenchmarksScreen & StudioShell /benchmarks wiring', () => 
 		await waitFor(() => {
 			expect(benchmarksStore.activeCategory).toBe('all');
 		});
+	});
+
+	it('shows error state on non-SELECT SQL and empty-row state when no rows match', async () => {
+		render(BenchmarksScreen, { props: { store, sessionStore } });
+
+		const sqlInput = screen.getByTestId('datafusion-sql-input');
+		await fireEvent.input(sqlInput, {
+			target: { value: 'DELETE FROM delta.llm_benchmarks;' }
+		});
+		await fireEvent.click(screen.getByTestId('datafusion-run-btn'));
+
+		expect(sqlInput).toHaveAttribute('aria-invalid', 'true');
+		expect(sqlInput).toHaveAttribute('aria-describedby', 'datafusion-sql-error');
+		expect(screen.getByRole('alert')).toHaveTextContent('SELECT');
+
+		await fireEvent.input(sqlInput, {
+			target: {
+				value: "SELECT model_id FROM delta.llm_benchmarks WHERE model_id = 'unknown';"
+			}
+		});
+		await fireEvent.click(screen.getByTestId('datafusion-run-btn'));
+
+		expect(sqlInput).toHaveAttribute('aria-invalid', 'false');
+		expect(screen.getByTestId('datafusion-results-table')).toHaveTextContent(
+			'No benchmark rows matched query.'
+		);
+	});
+
+	it('aborts an in-flight benchmark run when unmounted mid-run', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				() =>
+					new Promise<Response>(() => {
+						// Keep request pending until aborted.
+					})
+			)
+		);
+
+		try {
+			const { unmount } = render(BenchmarksScreen, { props: { store, sessionStore } });
+			await fireEvent.click(screen.getByTestId('run-benchmark-btn'));
+			expect(store.status).toBe('running');
+
+			const abortSpy = vi.spyOn(store, 'abortRun');
+			unmount();
+
+			expect(abortSpy).toHaveBeenCalledTimes(1);
+			expect(store.status).toBe('aborted');
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });
