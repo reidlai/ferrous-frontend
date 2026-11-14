@@ -4,10 +4,12 @@
 	import BenchmarksScreen from '$lib/components/BenchmarksScreen.svelte';
 	import InvestigationScreen from '$lib/components/InvestigationScreen.svelte';
 	import Menubar from '$lib/components/Menubar.svelte';
+	import PipelinePerformanceScreen from '$lib/components/PipelinePerformanceScreen.svelte';
 	import RadarScreen from '$lib/components/RadarScreen.svelte';
 	import SimulatorScreen from '$lib/components/SimulatorScreen.svelte';
 	import { benchmarksStore } from '$lib/stores/benchmarks.svelte';
 	import { investigationStore } from '$lib/stores/investigation.svelte';
+	import { pipelineStore } from '$lib/stores/pipeline.svelte';
 	import { radarStore } from '$lib/stores/radar.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { normalizePath, workspace } from '$lib/stores/workspace.svelte';
@@ -37,6 +39,7 @@
 			investigationStore.reset();
 			radarStore.reset();
 			benchmarksStore.reset();
+			pipelineStore.reset();
 		}
 	});
 
@@ -64,25 +67,7 @@
 		{#if activePath === '/benchmarks'}
 			<BenchmarksScreen {sessionStore} />
 		{:else if activePath === '/pipeline-performance'}
-			<section
-				data-testid="screen-pipeline-performance"
-				aria-label="Pipeline Performance"
-				class="flex-1 p-6"
-			>
-				<div class="flex items-center justify-between border-b border-zinc-800 pb-4">
-					<div>
-						<h1 class="text-lg font-semibold text-zinc-50">Pipeline Performance</h1>
-						<p class="mt-1 text-xs text-zinc-400">
-							Ingestion WAL latency ({workspaceStore.walLatencyMs}ms) and Redpanda stream topology.
-						</p>
-					</div>
-					<span
-						class="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 font-mono text-xs text-blue-300"
-					>
-						⚡ {workspaceStore.walLatencyMs}ms WAL
-					</span>
-				</div>
-			</section>
+			<PipelinePerformanceScreen {sessionStore} />
 		{:else if activePath === '/radar'}
 			<RadarScreen {workspaceStore} />
 		{:else if activePath === '/analytics'}
