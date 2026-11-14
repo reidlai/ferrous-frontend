@@ -121,5 +121,23 @@ describe('session store', () => {
 		).not.toThrow();
 		expect(store.authenticated).toBe(true);
 		expect(store.token).toBe('jwt-token');
+		expect(store.tenant).toBe('SP-01');
+	});
+
+	it('defaults tenant to SP-01 when omitted on login and updates via setTenant', () => {
+		const store = createSessionStore();
+
+		store.login({
+			token: 'jwt-default-tenant',
+			username: 'carlos.support'
+		});
+
+		expect(store.tenant).toBe('SP-01');
+
+		store.setTenant('RJ-01');
+		expect(store.tenant).toBe('RJ-01');
+
+		store.setTenant('MG-01');
+		expect(store.tenant).toBe('MG-01');
 	});
 });

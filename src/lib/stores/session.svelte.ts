@@ -95,13 +95,17 @@ export function createSessionStore() {
 			}
 		},
 
+		setTenant(tenant: string) {
+			state.tenant = tenant;
+		},
+
 		login(payload: LoginSessionPayload) {
 			const shouldRemember = payload.rememberMe ?? state.rememberMe;
 			state.authenticated = true;
 			state.token = payload.token;
 			state.username = payload.username;
 			state.role = payload.role ?? null;
-			state.tenant = payload.tenant ?? null;
+			state.tenant = payload.tenant ?? 'SP-01';
 			state.rememberMe = shouldRemember;
 
 			// Only persist the operator username when rememberMe is enabled; JWT stays in memory only.
