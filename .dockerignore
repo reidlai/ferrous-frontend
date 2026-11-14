@@ -1,0 +1,10 @@
+node_modules
+.git
+.github
+build
+.svelte-kit
+server/target
+target
+*.log
+.env
+.env.*

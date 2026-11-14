@@ -1,0 +1,16 @@
+[package]
+name = "ferrous-frontend-server"
+version = "0.1.0"
+edition = "2021"
+description = "Ultra-minimal static asset and SPA server with security headers and health check"
+
+[dependencies]
+tiny_http = "0.12"
+clap = { version = "4.5", features = ["derive", "env"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

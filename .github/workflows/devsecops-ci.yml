@@ -1,0 +1,52 @@
+name: DevSecOps CI (Tier 1)
+
+on:
+  push:
+    branches: [main, 'epic-*']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-frontend:
+    name: Ferrous Frontend Quality & DevSecOps Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Security Audit (DevSecOps)
+        run: pnpm audit --prod
+
+      - name: Code Quality & Linting (ESLint)
+        run: pnpm run lint
+
+      - name: Type Checking (Svelte Check)
+        run: pnpm run check
+
+      - name: Unit & Component Tests (Vitest)
+        run: pnpm run test
+
+      - name: Production SPA Build (Vite)
+        run: pnpm run build

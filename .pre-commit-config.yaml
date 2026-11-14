@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: Frontend ESLint Gate
+        entry: pnpm run lint
+        language: system
+        files: ^(src|package\.json|eslint\.config\.js)
+        pass_filenames: false
+
+      - id: frontend-check
+        name: Frontend Svelte Check Gate
+        entry: pnpm run check
+        language: system
+        files: ^(src|tsconfig\.json|svelte\.config\.js)
+        pass_filenames: false
