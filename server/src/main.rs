@@ -76,7 +76,7 @@ pub fn add_security_headers<R: Read>(res: &mut Response<R>) {
     res.add_header(
         Header::from_bytes(
             &b"Content-Security-Policy"[..],
-            &b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none';"[..],
+            &b"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' http://localhost:* https://localhost:* ws: wss:; frame-ancestors 'none';"[..],
         ).unwrap(),
     );
     res.add_header(Header::from_bytes(&b"X-Frame-Options"[..], &b"DENY"[..]).unwrap());
