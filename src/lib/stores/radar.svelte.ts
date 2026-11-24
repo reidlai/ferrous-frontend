@@ -1,4 +1,5 @@
 import { goto } from '$app/navigation';
+import { fetchOlistTableStats, type OlistTableStat } from '$lib/api/orders';
 import { investigationStore, type createInvestigationStore } from '$lib/stores/investigation.svelte';
 import { workspace, type createWorkspaceStore } from '$lib/stores/workspace.svelte';
 
@@ -56,13 +57,40 @@ export interface OlistTopicStatus {
 	quickstartBinary: string;
 }
 
-export interface OlistDeltaTableStatus {
-	tableName: 'olist_orders' | 'olist_order_items' | 'olist_order_reviews' | 'olist_customers';
+export interface OlistTidbTableStatus {
+	tableName:
+		| 'olist_orders'
+		| 'olist_order_items'
+		| 'olist_order_payments'
+		| 'olist_order_reviews'
+		| 'olist_customers'
+		| 'olist_products'
+		| 'olist_sellers'
+		| 'olist_geolocation'
+		| 'olist_category_translation'
+		| 'orders_current_state'
+		| string;
+	role: string;
+	ingestionMode: string;
 	rowCount: number;
-	partitionCount: number;
-	latestVersion: number;
-	lastCommitAgo: string;
+	status: 'synced' | 'empty';
 }
+
+/** Backwards-compatible alias for legacy imports */
+export type OlistDeltaTableStatus = OlistTidbTableStatus;
+
+export interface OlistStreamTopicInfo {
+	topic: string;
+	targetTable: string;
+	profile: string;
+}
+
+export const OLIST_STREAM_TOPICS: OlistStreamTopicInfo[] = [
+	{ topic: 'olist/orders_stream', targetTable: 'olist_orders', profile: 'olist-demo.toml' },
+	{ topic: 'olist/order_items_stream', targetTable: 'olist_order_items', profile: 'olist-items.toml' },
+	{ topic: 'olist/order_payments_stream', targetTable: 'olist_order_payments', profile: 'olist-payments.toml' },
+	{ topic: 'olist/order_reviews_stream', targetTable: 'olist_order_reviews', profile: 'olist-reviews.toml' }
+];
 
 export const TOTAL_ACTIVE_SLA_BREACHES = 418;
 
@@ -257,7 +285,7 @@ export const OLIST_TOPIC_STATUS: OlistTopicStatus = {
 	currentOffset: 1_048_291,
 	highWatermark: 1_250_000,
 	profileTotalEvents: 1_250_000,
-	consumerGroup: 'cg-arroyo-olist',
+	consumerGroup: 'tidb-sink',
 	consumerLagMsgs: 0,
 	mode: 'read-only',
 	quickstartRepo: 'ferrous-cx',
@@ -265,36 +293,81 @@ export const OLIST_TOPIC_STATUS: OlistTopicStatus = {
 	quickstartBinary: 'stream-replay-rs'
 };
 
-export const OLIST_DELTA_TABLES: OlistDeltaTableStatus[] = [
+export const OLIST_TIDB_TABLES: OlistTidbTableStatus[] = [
 	{
 		tableName: 'olist_orders',
+		role: 'Canonical Order Fact',
+		ingestionMode: 'stream: olist/orders_stream',
 		rowCount: 99441,
-		partitionCount: 27,
-		latestVersion: 148,
-		lastCommitAgo: '12s ago'
+		status: 'synced'
 	},
 	{
 		tableName: 'olist_order_items',
+		role: 'Order Line Items',
+		ingestionMode: 'stream: olist/order_items_stream',
 		rowCount: 112650,
-		partitionCount: 27,
-		latestVersion: 148,
-		lastCommitAgo: '12s ago'
+		status: 'synced'
+	},
+	{
+		tableName: 'olist_order_payments',
+		role: 'Order Payment Legs',
+		ingestionMode: 'stream: olist/order_payments_stream',
+		rowCount: 103886,
+		status: 'synced'
 	},
 	{
 		tableName: 'olist_order_reviews',
+		role: 'Customer Reviews',
+		ingestionMode: 'stream: olist/order_reviews_stream',
 		rowCount: 99224,
-		partitionCount: 16,
-		latestVersion: 146,
-		lastCommitAgo: '34s ago'
+		status: 'synced'
 	},
 	{
 		tableName: 'olist_customers',
+		role: 'Customer Directory',
+		ingestionMode: 'dimension: batch',
 		rowCount: 99441,
-		partitionCount: 27,
-		latestVersion: 142,
-		lastCommitAgo: '2m ago'
+		status: 'synced'
+	},
+	{
+		tableName: 'olist_products',
+		role: 'Product Catalog',
+		ingestionMode: 'dimension: batch',
+		rowCount: 32951,
+		status: 'synced'
+	},
+	{
+		tableName: 'olist_sellers',
+		role: 'Seller Directory',
+		ingestionMode: 'dimension: batch',
+		rowCount: 3095,
+		status: 'synced'
+	},
+	{
+		tableName: 'olist_geolocation',
+		role: 'CEP Geolocation',
+		ingestionMode: 'dimension: batch',
+		rowCount: 19015,
+		status: 'synced'
+	},
+	{
+		tableName: 'olist_category_translation',
+		role: 'PT→EN Categories',
+		ingestionMode: 'dimension: batch',
+		rowCount: 71,
+		status: 'synced'
+	},
+	{
+		tableName: 'orders_current_state',
+		role: 'CQRS Materialized View',
+		ingestionMode: 'stream: orders/consolidated',
+		rowCount: 99441,
+		status: 'synced'
 	}
 ];
+
+/** Backwards-compatible alias */
+export const OLIST_DELTA_TABLES: OlistTidbTableStatus[] = OLIST_TIDB_TABLES;
 
 export function createRadarStore(initialBreaches: SlaBreachItem[] = DEFAULT_SLA_BREACHES) {
 	let breaches = $state.raw<SlaBreachItem[]>(initialBreaches);
@@ -302,6 +375,8 @@ export function createRadarStore(initialBreaches: SlaBreachItem[] = DEFAULT_SLA_
 	let carrierFilter = $state<string>('ALL');
 	let searchQuery = $state<string>('');
 	let selectedClusterUf = $state<UfCode>('SP');
+	let tidbTables = $state<OlistTidbTableStatus[]>(OLIST_TIDB_TABLES);
+	let storageEngine = $state<string>('tidb');
 
 	const carrierOptions = $derived(
 		Array.from(new Set(breaches.map((b) => b.carrier))).sort((a, b) => a.localeCompare(b))
@@ -386,6 +461,26 @@ export function createRadarStore(initialBreaches: SlaBreachItem[] = DEFAULT_SLA_
 		},
 		get selectedCluster() {
 			return selectedCluster;
+		},
+		get tidbTables() {
+			return tidbTables;
+		},
+		get storageEngine() {
+			return storageEngine;
+		},
+
+		async loadTableStats(token: string | null = null, fetcher?: typeof fetch): Promise<boolean> {
+			try {
+				const stats = await fetchOlistTableStats(token, fetcher);
+				if (stats.tables.length > 0) {
+					tidbTables = stats.tables;
+					storageEngine = stats.storageEngine;
+					return true;
+				}
+				return false;
+			} catch {
+				return false;
+			}
 		},
 
 		setUfFilter(uf: UfFilter) {

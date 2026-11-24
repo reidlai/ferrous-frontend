@@ -211,4 +211,16 @@ describe('InvestigationScreen', () => {
 		expect(screen.getByTestId('screen-investigation')).toBeInTheDocument();
 		expect(screen.getByTestId('hitl-proposal-card')).toBeInTheDocument();
 	});
+
+	it('renders 9-table Olist lifecycle timeline, payment legs, customer geo, and seller/freight details', () => {
+		render(InvestigationScreen, { props: { sessionStore, store } });
+
+		expect(screen.getByTestId('olist-lifecycle-timeline')).toBeInTheDocument();
+		expect(screen.getByTestId('olist-customer-geo')).toHaveTextContent('CEP 01310');
+		expect(screen.getByTestId('order-payments-card')).toBeInTheDocument();
+		expect(screen.getByTestId('payment-leg-1')).toHaveTextContent('credit_card');
+		expect(screen.getByTestId('payment-leg-2')).toHaveTextContent('voucher');
+		expect(screen.getByTestId('itemized-goods-list')).toHaveTextContent('small_appliances');
+		expect(screen.getByTestId('itemized-goods-list')).toHaveTextContent('Curitiba/PR');
+	});
 });
