@@ -1,5 +1,7 @@
 import {
 	CommandError,
+	fetchOrderDetails,
+	fetchOrders,
 	issueCourtesyCredit,
 	type OrderCase,
 	type ToastMessage
@@ -13,29 +15,69 @@ const DEFAULT_OLIST_ORDERS: OrderCase[] = [
 		orderId: 'OL-94821-SP',
 		orderUuid: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
 		customerId: 'cust-olist-88412',
+		customerUniqueId: 'u88412-sp-vip',
+		customerZipCodePrefix: '01310',
+		customerCity: 'São Paulo',
+		customerState: 'SP',
 		customerName: 'Mariana Oliveira',
 		customerTier: 'Olist VIP · Repeat Buyer',
 		customerLtvBrl: 4820.5,
 		tenant: 'SP-01',
+		orderStatus: 'shipped',
 		slaStatus: 'BREACHED',
 		slaBadgeText: 'SLA BREACHED (+8.4 Days)',
 		carrier: 'Correios SEDEX · Hub Cajamar',
 		route: 'Curitiba (PR) → São Paulo (SP)',
 		promisedAt: '2026-11-05T18:00:00Z',
+		lifecycle: {
+			purchaseTimestamp: '2026-10-28T14:12:00Z',
+			approvedAt: '2026-10-28T14:26:00Z',
+			deliveredCarrierDate: '2026-10-30T09:40:00Z',
+			deliveredCustomerDate: null,
+			estimatedDeliveryDate: '2026-11-05T18:00:00Z'
+		},
 		items: [
 			{
 				sku: 'OSTER-PL2-110V',
+				productId: 'prod-422879e10f46682990de24d770e7f83d',
+				sellerId: 'sell-1f50f920176fa81dab994f9023523100',
+				sellerCity: 'Curitiba',
+				sellerState: 'PR',
 				name: 'Cafeteira Expresso Oster PrimaLatte II',
-				category: 'Eletroportáteis',
+				category: 'eletroportateis',
+				categoryEnglish: 'small_appliances',
 				quantity: 1,
-				unitPriceBrl: 1189.0
+				unitPriceBrl: 1189.0,
+				freightValueBrl: 29.8,
+				shippingLimitDate: '2026-11-01T14:26:00Z'
 			},
 			{
 				sku: 'PORC-XIC-06',
+				productId: 'prod-99a4788cb24856965c36a24e339b6058',
+				sellerId: 'sell-1f50f920176fa81dab994f9023523100',
+				sellerCity: 'Curitiba',
+				sellerState: 'PR',
 				name: 'Conjunto Xícaras Porcelana 6 Peças',
-				category: 'Utilidades Domésticas',
+				category: 'utilidades_domesticas',
+				categoryEnglish: 'housewares',
 				quantity: 1,
-				unitPriceBrl: 149.0
+				unitPriceBrl: 149.0,
+				freightValueBrl: 14.5,
+				shippingLimitDate: '2026-11-01T14:26:00Z'
+			}
+		],
+		payments: [
+			{
+				paymentSequential: 1,
+				paymentType: 'credit_card',
+				paymentInstallments: 6,
+				paymentValueBrl: 1282.3
+			},
+			{
+				paymentSequential: 2,
+				paymentType: 'voucher',
+				paymentInstallments: 1,
+				paymentValueBrl: 100.0
 			}
 		],
 		reviewOriginalPt:
@@ -43,12 +85,21 @@ const DEFAULT_OLIST_ORDERS: OrderCase[] = [
 		reviewTranslatedEn:
 			'I bought the espresso maker for my mother’s birthday and it is already more than a week past the promised delivery window. Tracking stalled in Cajamar and nobody is replying in support.',
 		reviewRating: 1,
+		reviewMeta: {
+			reviewId: 'rev-7bc2406110b926393aa56f80a40eba40',
+			score: 1,
+			title: 'Atraso crítico em Cajamar',
+			creationDate: '2026-11-13T10:15:00Z',
+			answerTimestamp: '2026-11-13T11:02:00Z'
+		},
+		courtesyCreditBrl: 0,
+		source: 'fallback',
 		copilotSummary:
 			'Carrier scan stalled 8.4 days past SLA at Hub Cajamar. High-LTV VIP customer (R$ 4.820,50) with 1-star review risk; Policy OLIST-SLA-T2 authorizes an automated R$ 29,80 courtesy credit.',
 		thoughts: [
 			{
 				id: 'th-1',
-				step: 'Correlate Redpanda carrier telemetry with promised SLA',
+				step: 'Correlate Apache Iggy carrier telemetry with promised SLA',
 				detail: 'Detected 201.6h stall (+8.4 days over SLA) at Correios Cajamar sorting hub.',
 				durationMs: 42
 			},
@@ -196,6 +247,8 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 	let proposalStatusByOrder = $state<Record<string, ProposalStatus>>({});
 	let errorByOrder = $state<Record<string, string | null>>({});
 	let toast = $state<ToastMessage | null>(null);
+	let dataSource = $state<'tidb' | 'fallback'>('fallback');
+	let isSyncing = $state<boolean>(false);
 	let nextToastId = 1;
 	let epoch = 0;
 
@@ -235,6 +288,50 @@ export function createInvestigationStore(initialOrders: OrderCase[] = DEFAULT_OL
 		},
 		get toast() {
 			return toast;
+		},
+		get dataSource() {
+			return dataSource;
+		},
+		get isSyncing() {
+			return isSyncing;
+		},
+
+		async loadLiveOrders(
+			token: string | null,
+			fetcher?: typeof fetch,
+			limit = 10
+		): Promise<boolean> {
+			if (isSyncing) return false;
+			isSyncing = true;
+			const currentEpoch = epoch;
+			try {
+				const list = await fetchOrders(token, { limit }, fetcher);
+				if (currentEpoch !== epoch || list.orders.length === 0) {
+					return false;
+				}
+				const hydrated = await Promise.all(
+					list.orders.slice(0, limit).map((summary) =>
+						fetchOrderDetails(summary.order_id, token, fetcher).catch(() => null)
+					)
+				);
+				if (currentEpoch !== epoch) {
+					return false;
+				}
+				const valid = hydrated.filter((item): item is OrderCase => item !== null);
+				if (valid.length === 0) {
+					return false;
+				}
+				orders = valid;
+				activeOrderId = valid[0].orderId;
+				dataSource = 'tidb';
+				return true;
+			} catch {
+				return false;
+			} finally {
+				if (currentEpoch === epoch) {
+					isSyncing = false;
+				}
+			}
 		},
 
 		selectOrder(orderId: string) {

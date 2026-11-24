@@ -143,7 +143,7 @@ describe('Story 10.4: RadarScreen, AnalyticsScreen, SimulatorScreen', () => {
 	});
 
 	describe('SimulatorScreen', () => {
-		it('renders read-only ReplayStatusPill, Iggy topic, cg-arroyo-olist lag, Delta tables, quickstart, and ZERO playback controls', () => {
+		it('renders read-only ReplayStatusPill, 4 Iggy topics, tidb-sink lag, all 9 Olist TiDB tables + orders_current_state, quickstart, and ZERO playback controls', () => {
 			render(SimulatorScreen);
 
 			const pill = screen.getByTestId('replay-status-pill');
@@ -154,20 +154,33 @@ describe('Story 10.4: RadarScreen, AnalyticsScreen, SimulatorScreen', () => {
 
 			const topicInspector = screen.getByTestId('iggy-topic-inspector');
 			expect(topicInspector).toHaveTextContent('olist/orders_stream');
+			expect(topicInspector).toHaveTextContent('olist/order_items_stream');
+			expect(topicInspector).toHaveTextContent('olist/order_payments_stream');
+			expect(topicInspector).toHaveTextContent('olist/order_reviews_stream');
 			expect(topicInspector).toHaveTextContent('24.8 msgs/s');
 			expect(topicInspector).toHaveTextContent('1,048,291');
 			expect(topicInspector).toHaveTextContent('1,250,000');
 			expect(topicInspector).toHaveTextContent('83.9%');
 
 			const cgInspector = screen.getByTestId('consumer-group-inspector');
-			expect(cgInspector).toHaveTextContent('cg-arroyo-olist');
+			expect(cgInspector).toHaveTextContent('tidb-sink');
 			expect(cgInspector).toHaveTextContent('0 msgs');
 
-			const deltaMonitor = screen.getByTestId('delta-tables-monitor');
-			expect(deltaMonitor).toHaveTextContent('olist_orders');
-			expect(deltaMonitor).toHaveTextContent('olist_order_items');
-			expect(deltaMonitor).toHaveTextContent('olist_order_reviews');
-			expect(deltaMonitor).toHaveTextContent('olist_customers');
+			const tidbMonitor = screen.getByTestId('delta-tables-monitor');
+			for (const table of [
+				'olist_orders',
+				'olist_order_items',
+				'olist_order_payments',
+				'olist_order_reviews',
+				'olist_customers',
+				'olist_products',
+				'olist_sellers',
+				'olist_geolocation',
+				'olist_category_translation',
+				'orders_current_state'
+			]) {
+				expect(tidbMonitor).toHaveTextContent(table);
+			}
 
 			const quickstartCard = screen.getByTestId('replay-quickstart-card');
 			expect(quickstartCard).toHaveTextContent('ferrous-cx');

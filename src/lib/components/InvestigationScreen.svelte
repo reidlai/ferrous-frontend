@@ -21,6 +21,13 @@
 	}: InvestigationScreenProps = $props();
 
 	const activeOrder = $derived(store.activeOrder);
+
+	function formatShortDate(iso?: string | null): string {
+		if (!iso) return 'Pending';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return iso;
+		return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+	}
 </script>
 
 <div
@@ -37,16 +44,37 @@
 			<h2 class="font-mono text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
 				Queues &amp; Workspaces
 			</h2>
-			<span class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
-				{store.orders.length}
-			</span>
+			<div class="flex items-center gap-1.5">
+				<span
+					data-testid="orders-source-badge"
+					class="rounded px-1.5 py-0.5 font-mono text-[10px] {store.dataSource === 'tidb'
+						? 'bg-emerald-500/20 text-emerald-300'
+						: 'bg-zinc-800 text-zinc-400'}"
+				>
+					{store.dataSource === 'tidb' ? 'TiDB' : 'Seed'}
+				</span>
+				<span class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+					{store.orders.length}
+				</span>
+			</div>
 		</div>
 
-		<div class="mt-2.5 rounded-md border border-zinc-800/80 bg-zinc-900/50 px-2.5 py-2">
-			<p class="font-mono text-[10px] text-zinc-500 uppercase">Active Workspace</p>
-			<p class="mt-0.5 text-xs font-medium text-zinc-200">
-				SLA Recovery · {sessionStore.tenant ?? 'SP-01'}
-			</p>
+		<div class="mt-2.5 flex items-center justify-between gap-2 rounded-md border border-zinc-800/80 bg-zinc-900/50 px-2.5 py-2">
+			<div class="min-w-0">
+				<p class="font-mono text-[10px] text-zinc-500 uppercase">Active Workspace</p>
+				<p class="mt-0.5 truncate text-xs font-medium text-zinc-200">
+					SLA Recovery · {sessionStore.tenant ?? 'SP-01'}
+				</p>
+			</div>
+			<button
+				type="button"
+				data-testid="sync-live-orders-btn"
+				disabled={store.isSyncing}
+				onclick={() => store.loadLiveOrders(sessionStore.token, fetcher)}
+				class="shrink-0 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[10px] text-zinc-300 transition hover:border-amber-500/50 hover:text-amber-200 disabled:opacity-50"
+			>
+				{store.isSyncing ? 'Syncing…' : 'Sync TiDB'}
+			</button>
 		</div>
 
 		<ul class="mt-3 space-y-1.5" aria-label="Order queue">
@@ -118,7 +146,17 @@
 					</div>
 					<p class="mt-1 text-xs text-zinc-400">
 						{activeOrder.carrier} · {activeOrder.route}
+						{#if activeOrder.orderStatus}
+							· <span class="font-mono text-zinc-300">status: {activeOrder.orderStatus}</span>
+						{/if}
 					</p>
+					{#if activeOrder.customerUniqueId || activeOrder.customerZipCodePrefix}
+						<p data-testid="olist-customer-geo" class="mt-0.5 font-mono text-[10px] text-zinc-500">
+							{#if activeOrder.customerUniqueId}uid: {activeOrder.customerUniqueId}{/if}
+							{#if activeOrder.customerZipCodePrefix} · CEP {activeOrder.customerZipCodePrefix}{/if}
+							{#if activeOrder.customerCity && activeOrder.customerState} · {activeOrder.customerCity}/{activeOrder.customerState}{/if}
+						</p>
+					{/if}
 				</div>
 
 				<div
@@ -135,39 +173,106 @@
 				</div>
 			</header>
 
-			<!-- Itemized Goods -->
+			<!-- Olist 5-Milestone Delivery Lifecycle (olist_orders) -->
+			{#if activeOrder.lifecycle}
+				<div class="mt-5" data-testid="olist-lifecycle-timeline">
+					<h2 class="font-mono text-xs font-semibold tracking-wider text-zinc-400 uppercase">
+						Olist Order Lifecycle (5 Timestamps)
+					</h2>
+					<dl class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+						<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 px-2.5 py-2">
+							<dt class="font-mono text-[10px] text-zinc-500 uppercase">Purchased</dt>
+							<dd class="mt-0.5 font-mono text-[11px] text-zinc-200">
+								{formatShortDate(activeOrder.lifecycle.purchaseTimestamp)}
+							</dd>
+						</div>
+						<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 px-2.5 py-2">
+							<dt class="font-mono text-[10px] text-zinc-500 uppercase">Approved</dt>
+							<dd class="mt-0.5 font-mono text-[11px] text-zinc-200">
+								{formatShortDate(activeOrder.lifecycle.approvedAt)}
+							</dd>
+						</div>
+						<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 px-2.5 py-2">
+							<dt class="font-mono text-[10px] text-zinc-500 uppercase">Carrier</dt>
+							<dd class="mt-0.5 font-mono text-[11px] text-zinc-200">
+								{formatShortDate(activeOrder.lifecycle.deliveredCarrierDate)}
+							</dd>
+						</div>
+						<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 px-2.5 py-2">
+							<dt class="font-mono text-[10px] text-zinc-500 uppercase">Delivered</dt>
+							<dd class="mt-0.5 font-mono text-[11px] {activeOrder.lifecycle.deliveredCustomerDate ? 'text-emerald-300' : 'text-amber-300'}">
+								{formatShortDate(activeOrder.lifecycle.deliveredCustomerDate)}
+							</dd>
+						</div>
+						<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 px-2.5 py-2">
+							<dt class="font-mono text-[10px] text-zinc-500 uppercase">Estimated SLA</dt>
+							<dd class="mt-0.5 font-mono text-[11px] text-zinc-200">
+								{formatShortDate(activeOrder.lifecycle.estimatedDeliveryDate)}
+							</dd>
+						</div>
+					</dl>
+				</div>
+			{/if}
+
+			<!-- Itemized Goods (olist_order_items + olist_products + olist_sellers + olist_category_translation) -->
 			<div class="mt-5">
 				<h2 class="font-mono text-xs font-semibold tracking-wider text-zinc-400 uppercase">
 					Itemized Goods
 				</h2>
 				<div
 					data-testid="itemized-goods-list"
-					class="mt-2 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50"
+					class="mt-2 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900/50"
 				>
 					<table class="w-full text-left text-xs">
 						<thead class="border-b border-zinc-800 bg-zinc-950/70 font-mono text-[10px] text-zinc-400 uppercase">
 							<tr>
-								<th scope="col" class="px-3 py-2">SKU</th>
+								<th scope="col" class="px-3 py-2">SKU / Product</th>
 								<th scope="col" class="px-3 py-2">Item</th>
 								<th scope="col" class="px-3 py-2">Category</th>
+								<th scope="col" class="px-3 py-2">Seller</th>
 								<th scope="col" class="px-3 py-2 text-right">Qty</th>
-								<th scope="col" class="px-3 py-2 text-right">Unit Price</th>
+								<th scope="col" class="px-3 py-2 text-right">Price / Freight</th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-zinc-800/80">
 							{#each activeOrder.items as item, index (`${item.sku}-${index}`)}
 								<tr class="text-zinc-200">
-									<td class="px-3 py-2.5 font-mono text-[11px] text-zinc-400">{item.sku}</td>
+									<td class="px-3 py-2.5 font-mono text-[11px] text-zinc-400">
+										<div>{item.sku}</div>
+										{#if item.productId}
+											<div class="text-[10px] text-zinc-500">{item.productId.slice(0, 14)}</div>
+										{/if}
+									</td>
 									<td class="px-3 py-2.5 font-medium text-zinc-100">{item.name}</td>
-									<td class="px-3 py-2.5 text-zinc-400">{item.category}</td>
+									<td class="px-3 py-2.5 text-zinc-400">
+										<div>{item.categoryEnglish ?? item.category}</div>
+										{#if item.categoryEnglish && item.category !== item.categoryEnglish}
+											<div class="font-mono text-[10px] text-zinc-500">{item.category}</div>
+										{/if}
+									</td>
+									<td class="px-3 py-2.5 font-mono text-[11px] text-zinc-400">
+										{#if item.sellerCity && item.sellerState}
+											<div>{item.sellerCity}/{item.sellerState}</div>
+										{/if}
+										{#if item.sellerId}
+											<div class="text-[10px] text-zinc-500">{item.sellerId.slice(0, 12)}</div>
+										{:else}
+											<span>—</span>
+										{/if}
+									</td>
 									<td class="px-3 py-2.5 text-right font-mono">{item.quantity}</td>
 									<td class="px-3 py-2.5 text-right font-mono text-zinc-200">
-										{formatBrl(item.unitPriceBrl)}
+										<div>{formatBrl(item.unitPriceBrl)}</div>
+										{#if typeof item.freightValueBrl === 'number'}
+											<div class="text-[10px] text-zinc-500">
+												+{formatBrl(item.freightValueBrl)} freight
+											</div>
+										{/if}
 									</td>
 								</tr>
 							{:else}
 								<tr>
-									<td colspan="5" class="px-3 py-4 text-center text-xs text-zinc-500">
+									<td colspan="6" class="px-3 py-4 text-center text-xs text-zinc-500">
 										No itemized goods recorded.
 									</td>
 								</tr>
@@ -177,7 +282,42 @@
 				</div>
 			</div>
 
-			<!-- Customer Review with 1-Click Translation Toggle -->
+			<!-- Payment Legs (olist_order_payments) -->
+			{#if activeOrder.payments && activeOrder.payments.length > 0}
+				<div class="mt-5" data-testid="order-payments-card">
+					<div class="flex items-center justify-between gap-2">
+						<h2 class="font-mono text-xs font-semibold tracking-wider text-zinc-400 uppercase">
+							Payment Legs (olist_order_payments)
+						</h2>
+						{#if typeof activeOrder.courtesyCreditBrl === 'number' && activeOrder.courtesyCreditBrl > 0}
+							<span class="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] text-amber-300">
+								Courtesy Credit: {formatBrl(activeOrder.courtesyCreditBrl)}
+							</span>
+						{/if}
+					</div>
+					<div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+						{#each activeOrder.payments as payment (payment.paymentSequential)}
+							<div
+								data-testid="payment-leg-{payment.paymentSequential}"
+								class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 font-mono text-xs"
+							>
+								<div>
+									<span class="text-zinc-500">#{payment.paymentSequential}</span>
+									<span class="ml-1.5 text-zinc-200">{payment.paymentType}</span>
+									<span class="ml-1.5 text-[10px] text-zinc-500">
+										({payment.paymentInstallments}x)
+									</span>
+								</div>
+								<span class="font-semibold text-emerald-300">
+									{formatBrl(payment.paymentValueBrl)}
+								</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Customer Review with 1-Click Translation Toggle (olist_order_reviews) -->
 			<div class="mt-5">
 				<div class="flex items-center justify-between gap-2">
 					<div class="flex items-center gap-2">
@@ -192,6 +332,11 @@
 								? 'EN'
 								: 'PT-BR'}
 						</span>
+						{#if activeOrder.reviewMeta?.reviewId}
+							<span class="font-mono text-[10px] text-zinc-500">
+								{activeOrder.reviewMeta.reviewId.slice(0, 12)}
+							</span>
+						{/if}
 					</div>
 
 					<button
@@ -209,6 +354,11 @@
 					data-testid="customer-review-text"
 					class="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3.5 text-sm leading-relaxed text-zinc-200"
 				>
+					{#if activeOrder.reviewMeta?.title}
+						<p class="mb-1 font-mono text-xs font-semibold text-zinc-300">
+							{activeOrder.reviewMeta.title}
+						</p>
+					{/if}
 					{store.showTranslation ? activeOrder.reviewTranslatedEn : activeOrder.reviewOriginalPt}
 				</blockquote>
 			</div>

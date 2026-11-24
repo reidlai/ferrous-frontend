@@ -2,7 +2,7 @@
 	import { Activity, Database, Eye, Terminal } from 'lucide-svelte';
 	import {
 		createRadarStore,
-		OLIST_DELTA_TABLES,
+		OLIST_STREAM_TOPICS,
 		radarStore
 	} from '$lib/stores/radar.svelte';
 	import { REPLAY_QUICKSTART_URL } from '$lib/stores/workspace.svelte';
@@ -36,10 +36,10 @@
 				</span>
 			</div>
 			<h1 class="mt-1 text-xl font-semibold text-slate-50">
-				Olist Stream &amp; Delta Lake Monitor
+				Olist Stream &amp; TiDB Monitor
 			</h1>
 			<p class="mt-1 text-xs text-slate-400">
-				Passive telemetry inspector for Apache Iggy stream replay and Arroyo Delta Lake ingestion.
+				Passive telemetry inspector for Apache Iggy stream replay and pure-Rust tidb-sink ingestion into TiDB (9-table Kaggle Olist schema).
 			</p>
 		</div>
 
@@ -68,7 +68,7 @@
 			<div class="flex items-center justify-between border-b border-slate-800 pb-3">
 				<div class="flex items-center gap-2">
 					<Activity class="h-4 w-4 text-amber-400" aria-hidden="true" />
-					<h2 class="text-sm font-semibold text-slate-50">Apache Iggy Topic Inspector</h2>
+					<h2 class="text-sm font-semibold text-slate-50">Apache Iggy Streamed Topics (4)</h2>
 				</div>
 				<span class="rounded bg-slate-950 px-2 py-0.5 font-mono text-[11px] text-amber-300">
 					{store.topicStatus.topic}
@@ -101,6 +101,16 @@
 					</dd>
 				</div>
 			</dl>
+
+			<div class="mt-3 flex flex-wrap gap-1.5">
+				{#each OLIST_STREAM_TOPICS as streamTopic (streamTopic.topic)}
+					<span
+						class="rounded border border-slate-800 bg-slate-950/70 px-2 py-0.5 font-mono text-[10px] text-slate-300"
+					>
+						{streamTopic.topic} → {streamTopic.targetTable}
+					</span>
+				{/each}
+			</div>
 		</article>
 
 		<article
@@ -110,7 +120,7 @@
 			<div class="flex items-center justify-between border-b border-slate-800 pb-3">
 				<div class="flex items-center gap-2">
 					<Activity class="h-4 w-4 text-emerald-400" aria-hidden="true" />
-					<h2 class="text-sm font-semibold text-slate-50">Consumer Group Lag</h2>
+					<h2 class="text-sm font-semibold text-slate-50">TiDB Sink Consumer Lag</h2>
 				</div>
 				<span class="rounded bg-slate-950 px-2 py-0.5 font-mono text-[11px] text-emerald-300">
 					{store.topicStatus.consumerGroup}
@@ -125,24 +135,31 @@
 					</dd>
 				</div>
 				<div class="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-					<dt class="font-mono text-[10px] text-slate-400 uppercase">Inspection Mode</dt>
+					<dt class="font-mono text-[10px] text-slate-400 uppercase">Storage Engine</dt>
 					<dd class="mt-1 font-mono text-lg font-bold text-slate-200 uppercase">
-						{store.topicStatus.mode}
+						{store.storageEngine} ({store.topicStatus.mode})
 					</dd>
 				</div>
 			</dl>
 		</article>
 	</div>
 
-	<!-- olist_* Delta Lake Tables Monitor -->
+	<!-- Complete 9-Table Kaggle Olist + CQRS TiDB Tables Monitor -->
 	<section
 		data-testid="delta-tables-monitor"
-		aria-label="Olist Delta Lake Tables"
+		aria-label="Olist TiDB Tables"
 		class="mt-6 rounded-xl border border-slate-800/80 bg-slate-900/70 p-5"
 	>
-		<div class="flex items-center gap-2 border-b border-slate-800 pb-3">
-			<Database class="h-4 w-4 text-amber-400" aria-hidden="true" />
-			<h2 class="text-sm font-semibold text-slate-50">Olist Delta Lake Tables</h2>
+		<div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-3">
+			<div class="flex items-center gap-2">
+				<Database class="h-4 w-4 text-amber-400" aria-hidden="true" />
+				<h2 class="text-sm font-semibold text-slate-50">
+					Olist TiDB Tables (9-Table Kaggle Schema + CQRS View)
+				</h2>
+			</div>
+			<span class="rounded bg-slate-950 px-2 py-0.5 font-mono text-[11px] text-amber-300">
+				{store.tidbTables.length} tables · TiDB ACID
+			</span>
 		</div>
 
 		<div class="mt-4 overflow-x-auto">
@@ -150,22 +167,30 @@
 				<thead class="border-b border-slate-800 font-mono text-[11px] text-slate-400 uppercase">
 					<tr>
 						<th scope="col" class="px-3 py-2.5">Table</th>
-						<th scope="col" class="px-3 py-2.5">Row Count</th>
-						<th scope="col" class="px-3 py-2.5">Partitions</th>
-						<th scope="col" class="px-3 py-2.5">Latest Commit</th>
-						<th scope="col" class="px-3 py-2.5">Updated</th>
+						<th scope="col" class="px-3 py-2.5">Role</th>
+						<th scope="col" class="px-3 py-2.5">Ingestion Path</th>
+						<th scope="col" class="px-3 py-2.5 text-right">Row Count</th>
+						<th scope="col" class="px-3 py-2.5 text-right">Status</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-slate-800/70 font-mono">
-					{#each OLIST_DELTA_TABLES as table (table.tableName)}
+					{#each store.tidbTables as table (table.tableName)}
 						<tr data-testid="delta-table-row-{table.tableName}">
 							<td class="px-3 py-2.5 font-semibold text-slate-100">{table.tableName}</td>
-							<td class="px-3 py-2.5 text-slate-300">
+							<td class="px-3 py-2.5 font-sans text-slate-300">{table.role}</td>
+							<td class="px-3 py-2.5 text-[11px] text-amber-300">{table.ingestionMode}</td>
+							<td class="px-3 py-2.5 text-right text-slate-200">
 								{table.rowCount.toLocaleString('en-US')}
 							</td>
-							<td class="px-3 py-2.5 text-slate-300">{table.partitionCount}</td>
-							<td class="px-3 py-2.5 text-amber-300">v{table.latestVersion}</td>
-							<td class="px-3 py-2.5 text-slate-400">{table.lastCommitAgo}</td>
+							<td class="px-3 py-2.5 text-right">
+								<span
+									class="rounded px-1.5 py-0.5 text-[10px] uppercase {table.status === 'synced'
+										? 'bg-emerald-500/15 text-emerald-300'
+										: 'bg-slate-800 text-slate-400'}"
+								>
+									{table.status}
+								</span>
+							</td>
 						</tr>
 					{/each}
 				</tbody>
